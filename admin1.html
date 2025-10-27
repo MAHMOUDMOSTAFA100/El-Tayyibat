@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>لوحة الأدمن - الطيبات</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.rtl.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .admin-area{max-width:1100px;margin:40px auto}
+    .admin-card{border-radius:12px}
+  </style>
+</head>
+<body>
+  <header class="bg-danger py-2">
+    <div class="container d-flex justify-content-between align-items-center">
+      <a href="index.html" class="text-white fw-bold fs-4">🍯 الطيبات</a>
+      <div class="text-white">لوحة الإدارة</div>
+    </div>
+  </header>
+
+  <div class="admin-area container">
+    <!-- Simple auth (client-side) -->
+    <div id="loginBox" class="card p-4 admin-card mb-4">
+      <h5>تسجيل دخول الأدمن (كلمة بسيطة)</h5>
+      <div class="row g-2">
+        <div class="col-md-6"><input id="adminPass" class="form-control" placeholder="كلمة المرور"></div>
+        <div class="col-md-6 d-grid"><button id="loginBtn" class="btn btn-danger">دخول</button></div>
+      </div>
+      <small class="text-muted mt-2 d-block">كلمة المرور الافتراضية: <strong>admin123</strong></small>
+    </div>
+
+    <div id="adminArea" style="display:none">
+      <div class="row">
+        <div class="col-lg-6 mb-4">
+          <div class="card p-3 admin-card">
+            <h5>إضافة / تعديل منتج</h5>
+            <form id="prodForm" class="row g-2">
+              <div class="col-12"><input id="prodName" class="form-control" placeholder="اسم المنتج" required></div>
+              <div class="col-6"><input id="prodPrice" type="number" class="form-control" placeholder="السعر" required></div>
+              <div class="col-6"><input id="prodImg" class="form-control" placeholder="رابط صورة (أو اترك)"></div>
+              <div class="col-12"><textarea id="prodDesc" class="form-control" placeholder="وصف قصير"></textarea></div>
+              <div class="col-12 d-grid"><button class="btn btn-warning" type="submit">حفظ المنتج</button></div>
+            </form>
+          </div>
+        </div>
+
+        <div class="col-lg-6 mb-4">
+          <div class="card p-3 admin-card">
+            <h5>قائمة المنتجات (اضغط للحذف)</h5>
+            <div id="adminProducts" class="row g-3"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card p-3 admin-card">
+        <h5>الطلبات الواردة</h5>
+        <div id="adminOrders" class="table-responsive mt-2">
+          <table class="table table-bordered">
+            <thead class="table-danger"><tr><th>الطلب</th><th>عميل</th><th>هاتف</th><th>العنوان</th><th>الإجمالي</th><th>الإجراءات</th></tr></thead>
+            <tbody id="ordersBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+
+  const loginBtn = document.getElementById('loginBtn');
+  loginBtn.addEventListener('click', ()=>{
+    const v = document.getElementById('adminPass').value;
+    if(v === 'admin123'){
+      document.getElementById('loginBox').style.display='none';
+      document.getElementById('adminArea').style.display='block';
+      loadAdmin();
+    } else alert('كلمة المرور خاطئة');
+  });
+
+  function loadAdmin(){
+    renderAdminProducts();
+    renderAdminOrders();
+  }
+
+  function fetchProducts(){ return JSON.parse(localStorage.getItem('et_products')||'[]') }
+  function saveProducts(p){ localStorage.setItem('et_products', JSON.stringify(p)); }
+  function fetchOrders(){ return JSON.parse(localStorage.getItem('et_orders')||'[]') }
+  function saveOrders(o){ localStorage.setItem('et_orders', JSON.stringify(o)); }
+
+  let editIndex = null;
+
+  // عند اختيار صورة من الجهاز
+  const imgInput = document.createElement('input');
+  imgInput.type = 'file';
+  imgInput.accept = 'image/*';
+  imgInput.style.display = 'none';
+  document.body.appendChild(imgInput);
+  imgInput.addEventListener('change', function(){
+    const file = this.files[0];
+    if(file){
+      const reader = new FileReader();
+      reader.onload = function(e){
+        document.getElementById('prodImg').value = e.target.result; // تخزين الصورة base64
+      }
+      reader.readAsDataURL(file);
+    }
+  });
+
+  // عند الضغط على حقل الصورة يفتح المتصفح لاختيار صورة
+  document.getElementById('prodImg').addEventListener('click', ()=> imgInput.click());
+
+  // form المنتجات
+  document.getElementById('prodForm').addEventListener('submit', function(e){
+    e.preventDefault();
+    const name = document.getElementById('prodName').value.trim();
+    const price = parseFloat(document.getElementById('prodPrice').value)||0;
+    const img = document.getElementById('prodImg').value.trim() || 'assets/placeholder.jpg';
+    const desc = document.getElementById('prodDesc').value.trim();
+    const arr = fetchProducts();
+
+    if(editIndex !== null){ // تعديل
+      arr[editIndex] = { ...arr[editIndex], name, price, img, desc };
+      alert('تم تعديل المنتج');
+      editIndex = null;
+    } else { // إضافة
+      arr.unshift({ id: Date.now().toString(36), name, price, img, desc });
+      alert('تم إضافة المنتج');
+    }
+
+    saveProducts(arr);
+    this.reset();
+    renderAdminProducts();
+  });
+
+  function renderAdminProducts(){
+    const arr = fetchProducts();
+    const root = document.getElementById('adminProducts');
+    root.innerHTML = '';
+    if(arr.length === 0){
+      root.innerHTML = '<p class="text-muted">لا توجد منتجات</p>';
+      return;
+    }
+
+    arr.forEach((p, i)=>{
+      const col = document.createElement('div');
+      col.className = 'col-12';
+      col.innerHTML = `
+        <div class="d-flex align-items-center gap-3 border p-2 rounded">
+          <img src="${p.img}" style="width:84px;height:64px;object-fit:cover;border-radius:8px">
+          <div class="flex-grow-1">
+            <div class="fw-bold">${p.name}</div>
+            <div class="text-danger fw-bold">${p.price} ج.م</div>
+          </div>
+          <div class="d-flex gap-2">
+            <button class="btn btn-sm btn-outline-warning" onclick="editProduct(${i})">تعديل</button>
+            <button class="btn btn-sm btn-outline-danger" onclick="removeProduct(${i})">حذف</button>
+          </div>
+        </div>`;
+      root.appendChild(col);
+    });
+  }
+
+  function removeProduct(index){
+    if(!confirm('حذف المنتج؟')) return;
+    const arr = fetchProducts();
+    arr.splice(index,1);
+    saveProducts(arr);
+    renderAdminProducts();
+    alert('تم الحذف');
+  }
+
+  function editProduct(index){
+    const arr = fetchProducts();
+    const p = arr[index];
+    document.getElementById('prodName').value = p.name;
+    document.getElementById('prodPrice').value = p.price;
+    document.getElementById('prodImg').value = p.img;
+    document.getElementById('prodDesc').value = p.desc;
+    editIndex = index;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  // الطلبات
+  function renderAdminOrders(){
+    const rows = fetchOrders();
+    const body = document.getElementById('ordersBody');
+    body.innerHTML = '';
+    if(rows.length === 0){
+      body.innerHTML = '<tr><td colspan="6">لا توجد طلبات</td></tr>';
+      return;
+    }
+
+    rows.forEach((o,i)=>{
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${o.id}</td>
+        <td>${o.name}</td>
+        <td>${o.phone}</td>
+        <td>${o.address}</td>
+        <td>${o.total} ج.م</td>
+        <td>
+          <button class="btn btn-sm btn-outline-primary" onclick='viewOrder(${i})'>عرض</button>
+          <button class="btn btn-sm btn-outline-danger" onclick='deleteOrder(${i})'>حذف</button>
+        </td>`;
+      body.appendChild(tr);
+    });
+  }
+
+  function viewOrder(index){
+    const orders = fetchOrders();
+    const o = orders[index];
+    const w = window.open('','_blank');
+    const date = new Date(o.date || Date.now()).toLocaleString('ar-EG');
+    const itemsCount = o.items ? o.items.length : 0;
+
+    w.document.write(`
+      <html dir="rtl">
+      <head>
+        <meta charset="utf-8">
+        <title>فاتورة ${o.id}</title>
+        <style>
+          body{font-family:sans-serif;direction:rtl;padding:20px}
+          h2{color:#c00}
+          table{width:100%;border-collapse:collapse;margin-top:15px}
+          td,th{border:1px solid #ccc;padding:6px;text-align:center}
+          .summary{margin-top:15px;font-weight:bold}
+          button{margin-top:20px;padding:10px 20px;background:#c00;color:#fff;border:none;border-radius:6px;cursor:pointer}
+        </style>
+      </head>
+      <body>
+        <h2>فاتورة طلب رقم ${o.id}</h2>
+        <p><strong>العميل:</strong> ${o.name}</p>
+        <p><strong>الهاتف:</strong> ${o.phone}</p>
+        <p><strong>العنوان:</strong> ${o.address}</p>
+        <p><strong>تاريخ الطلب:</strong> ${date}</p>
+        ${o.items ? `
+          <table>
+            <thead><tr><th>المنتج</th><th>السعر</th><th>الكمية</th><th>الإجمالي</th></tr></thead>
+            <tbody>
+              ${o.items.map(it=>`<tr><td>${it.name}</td><td>${it.price}</td><td>${it.qty}</td><td>${it.price*it.qty}</td></tr>`).join('')}
+            </tbody>
+          </table>` : ''}
+        <div class="summary">عدد المنتجات: ${itemsCount}<br>الإجمالي الكلي: ${o.total} ج.م</div>
+        <button onclick="window.print()">🧾 طباعة الفاتورة</button>
+      </body></html>
+    `);
+    w.document.close();
+  }
+
+  function deleteOrder(index){
+    if(!confirm('حذف الطلب؟')) return;
+    const arr = fetchOrders();
+    arr.splice(index,1);
+    saveOrders(arr);
+    renderAdminOrders();
+    alert('تم الحذف');
+  }
+</script>
+</body>
+</html>
