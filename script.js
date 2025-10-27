@@ -165,7 +165,8 @@ function generateInvoiceHtml(order){
   <h3>الإجمالي: ${order.total.toFixed(2)} ج.م</h3>
   <p>طريقة التوصيل: ${order.delivery}</p>
   <p>التاريخ: ${order.date}</p>
-  <button onclick="window.print()" style="padding:10px 14px;background:#d62828;color:#fff;border:none;border-radius:8px;cursor:pointer">طباعة / حفظ PDF</button>
+  <button onclick="window.print()" style="padding:10px 14px;background:#d62828;color:#fff;border:none;border-radius:8px;cursor:pointer"> طباعة  PDF</button>
+  <button onclick="window.save()" style="padding:10px 14px;background:#d62828;color:#fff;border:none;border-radius:8px;cursor:pointer"> حفظ PDF</button>
   </body></html>`;
 }
 
