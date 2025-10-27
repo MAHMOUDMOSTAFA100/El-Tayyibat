@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>لوحة الأدمن - الطيبات</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.rtl.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .admin-area{max-width:1100px;margin:40px auto}
+    .admin-card{border-radius:12px}
+  </style>
+</head>
+<body>
+  <header class="bg-danger py-2">
+    <div class="container d-flex justify-content-between align-items-center">
+      <a href="index.html" class="text-white fw-bold fs-4">🍯 الطيبات</a>
+      <div class="text-white">لوحة الإدارة</div>
+    </div>
+  </header>
+
+  <div class="admin-area container">
+    <!-- Simple auth (client-side) -->
+    <div id="loginBox" class="card p-4 admin-card mb-4">
+      <h5>تسجيل دخول الأدمن (كلمة بسيطة)</h5>
+      <div class="row g-2">
+        <div class="col-md-6"><input id="adminPass" class="form-control" placeholder="كلمة المرور"></div>
+        <div class="col-md-6 d-grid"><button id="loginBtn" class="btn btn-danger">دخول</button></div>
+      </div>
+      <small class="text-muted mt-2 d-block">كلمة المرور الافتراضية: <strong>admin123</strong></small>
+    </div>
+
+    <div id="adminArea" style="display:none">
+      <div class="row">
+        <div class="col-lg-6 mb-4">
+          <div class="card p-3 admin-card">
+            <h5>إضافة / تعديل منتج</h5>
+            <form id="prodForm" class="row g-2">
+              <div class="col-12"><input id="prodName" class="form-control" placeholder="اسم المنتج" required></div>
+              <div class="col-6"><input id="prodPrice" type="number" class="form-control" placeholder="السعر" required></div>
+              <div class="col-6"><input id="prodImg" class="form-control" placeholder="رابط صورة (أو اترك)"></div>
+              <div class="col-12"><textarea id="prodDesc" class="form-control" placeholder="وصف قصير"></textarea></div>
+              <div class="col-12 d-grid"><button class="btn btn-warning" type="submit">حفظ المنتج</button></div>
+            </form>
+          </div>
+        </div>
+
+        <div class="col-lg-6 mb-4">
+          <div class="card p-3 admin-card">
+            <h5>قائمة المنتجات (اضغط للحذف)</h5>
+            <div id="adminProducts" class="row g-3"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card p-3 admin-card">
+        <h5>الطلبات الواردة</h5>
+        <div id="adminOrders" class="table-responsive mt-2">
+          <table class="table table-bordered">
+            <thead class="table-danger"><tr><th>الطلب</th><th>عميل</th><th>هاتف</th><th>العنوان</th><th>الإجمالي</th><th>الإجراءات</th></tr></thead>
+            <tbody id="ordersBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // admin.js local (kept here for simplicity) interacts with same localStorage keys as script.js
+    const loginBtn = document.getElementById('loginBtn');
+    loginBtn.addEventListener('click', ()=>{
+      const v = document.getElementById('adminPass').value;
+      if(v === 'admin123'){ document.getElementById('loginBox').style.display='none'; document.getElementById('adminArea').style.display='block'; loadAdmin(); }
+      else alert('كلمة المرور خاطئة');
+    });
+
+    function loadAdmin(){
+      renderAdminProducts();
+      renderAdminOrders();
+    }
+
+    function fetchProducts(){ return JSON.parse(localStorage.getItem('et_products')||'[]') }
+    function saveProducts(p){ localStorage.setItem('et_products', JSON.stringify(p)); }
+    function fetchOrders(){ return JSON.parse(localStorage.getItem('et_orders')||'[]') }
+    function saveOrders(o){ localStorage.setItem('et_orders', JSON.stringify(o)); }
+
+    // product form
+    document.getElementById('prodForm').addEventListener('submit', function(e){
+      e.preventDefault();
+      const name = document.getElementById('prodName').value.trim();
+      const price = parseFloat(document.getElementById('prodPrice').value)||0;
+      const img = document.getElementById('prodImg').value.trim() || 'assets/placeholder.jpg';
+      const desc = document.getElementById('prodDesc').value.trim();
+      const arr = fetchProducts();
+      arr.unshift({ id: Date.now().toString(36), name, price, img, desc });
+      saveProducts(arr);
+      this.reset();
+      renderAdminProducts();
+      alert('تم إضافة المنتج');
+    });
+
+    function renderAdminProducts(){
+      const arr = fetchProducts();
+      const root = document.getElementById('adminProducts');
+      root.innerHTML = '';
+      if(arr.length === 0) root.innerHTML = '<p class="text-muted">لا توجد منتجات</p>';
+      arr.forEach((p, i)=>{
+        const col = document.createElement('div'); col.className = 'col-12';
+        col.innerHTML = `<div class="d-flex align-items-center gap-3">
+          <img src="${p.img}" style="width:84px;height:64px;object-fit:cover;border-radius:8px">
+          <div class="flex-grow-1">
+            <div class="fw-bold">${p.name}</div>
+            <div class="text-danger fw-bold">${p.price} ج.م</div>
+          </div>
+          <div><button class="btn btn-sm btn-outline-danger" onclick="removeProduct(${i})">حذف</button></div>
+        </div>`;
+        root.appendChild(col);
+      });
+    }
+
+    function removeProduct(index){
+      if(!confirm('حذف المنتج؟')) return;
+      const arr = fetchProducts(); arr.splice(index,1); saveProducts(arr); renderAdminProducts();
+      alert('تم الحذف');
+    }
+
+    function renderAdminOrders(){
+      const rows = fetchOrders();
+      const body = document.getElementById('ordersBody');
+      body.innerHTML = '';
+      if(rows.length === 0) body.innerHTML = '<tr><td colspan="6">لا توجد طلبات</td></tr>';
+      rows.forEach((o,i)=>{
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${o.id}</td><td>${o.name}</td><td>${o.phone}</td><td>${o.address}</td><td>${o.total} ج.م</td>
+        <td><button class="btn btn-sm btn-outline-primary" onclick='viewOrder(${i})'>عرض</button> <button class="btn btn-sm btn-outline-danger" onclick='deleteOrder(${i})'>حذف</button></td>`;
+        body.appendChild(tr);
+      });
+    }
+
+    function viewOrder(index){
+      const orders = fetchOrders();
+      const o = orders[index];
+      const w = window.open('','_blank');
+      w.document.write(`<html dir="rtl"><head><meta charset="utf-8"><title>فاتورة ${o.id}</title></head><body><pre>${JSON.stringify(o,null,2)}</pre><button onclick="window.print()">طباعة</button></body></html>`);
+      w.document.close();
+    }
+
+    function deleteOrder(index){
+      if(!confirm('حذف الطلب؟')) return;
+      const arr = fetchOrders(); arr.splice(index,1); saveOrders(arr); renderAdminOrders();
+      alert('تم الحذف');
+    }
+  </script>
+</body>
+</html>
