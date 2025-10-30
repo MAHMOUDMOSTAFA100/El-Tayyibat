@@ -1,195 +1,543 @@
-// ================================
-// El Tayyibat - script.js
-// Vanilla JS - localStorage based
-// ================================
+// ====================================================
+// ✅ EL TAYYIBAT - script.js (ملف المستخدم الأساسي)
+// ====================================================
 
-/*
-Data storage:
-- products stored at localStorage key 'et_products'
-- orders stored at localStorage key 'et_orders'
-This allows admin.html to manage products and orders in same browser.
-*/
-
-// --- Helpers ---
 const $ = sel => document.querySelector(sel);
-const $$ = sel => Array.from(document.querySelectorAll(sel));
-const uid = () => Date.now().toString(36) + Math.floor(Math.random()*999).toString(36);
+const uid = () => Date.now().toString(36);
 
-// --- Default demo products (used when no products saved) ---
-const DEFAULT_PRODUCTS = [
-  { id: uid(), name: "حلاوة طحينية سادة 1 كجم", price: 75, img: "assets/halawa1.jpg", desc: "طعم أصيل وجودة عالية" },
-  { id: uid(), name: "حلاوة طحينية بالمكسرات 1 كجم", price: 95, img: "assets/halawa2.jpg", desc: "مكسّرة ومغلفة بعناية" },
-  { id: uid(), name: "حلاوة طحينية بالشوكولاتة 1 كجم", price: 85, img: "assets/halawa3.jpg", desc: "نكهة شوكولاتة مميزة" }
-];
+// =======================
+// ✅ LocalStorage Shortcuts
+// =======================
+function fetchCart(){ return JSON.parse(localStorage.getItem('et_cart') || '[]'); }
+function saveCart(arr){ localStorage.setItem('et_cart', JSON.stringify(arr)); }
 
-// --- Storage functions ---
-function fetchProducts(){
-  const raw = localStorage.getItem('et_products');
-  if(!raw) { localStorage.setItem('et_products', JSON.stringify(DEFAULT_PRODUCTS)); return DEFAULT_PRODUCTS; }
-  try { return JSON.parse(raw) } catch(e){ localStorage.setItem('et_products', JSON.stringify(DEFAULT_PRODUCTS)); return DEFAULT_PRODUCTS }
-}
+function fetchProducts(){ return JSON.parse(localStorage.getItem('et_products') || '[]'); }
 function saveProducts(arr){ localStorage.setItem('et_products', JSON.stringify(arr)); }
-function fetchOrders(){ return JSON.parse(localStorage.getItem('et_orders')||'[]') }
+
+function fetchOrders(){ return JSON.parse(localStorage.getItem('et_orders') || '[]'); }
 function saveOrders(arr){ localStorage.setItem('et_orders', JSON.stringify(arr)); }
 
-// --- Render products on index page ---
+function fetchFeedback(){ return JSON.parse(localStorage.getItem('et_feedback') || '[]'); }
+function saveFeedback(arr){ localStorage.setItem('et_feedback', JSON.stringify(arr)); }
+
+// =======================
+// ✅ CART ICON COUNT
+// =======================
+function updateCartCount(){
+  const badge = $("#cartCountNav");
+  if (badge) badge.textContent = fetchCart().length;
+}
+
+// =======================
+// ✅ Render Products (now includes qty input and uses p.id)
+// =======================
 function renderProducts(){
-  const grid = $('#productGrid');
+  const arr = fetchProducts();
+  const grid = $("#productGrid");
   if(!grid) return;
-  const prods = fetchProducts();
-  grid.innerHTML = '';
-  prods.forEach(p => {
-    const col = document.createElement('div'); col.className = 'col-md-4';
-    col.innerHTML = `
-      <div class="product-card card">
-        <img src="${p.img}" alt="${p.name}">
-        <div class="card-body">
-          <h5 class="card-title">${p.name}</h5>
-          <p class="text-muted small">${p.desc || ''}</p>
-          <div class="d-flex justify-content-between align-items-center mt-3">
-            <div class="price-badge">${p.price} ج.م</div>
-            <div>
-              <button class="btn btn-sm btn-outline-secondary me-2" onclick="quickView('${p.id}')">عرض</button>
-              <button class="btn btn-sm btn-warning" onclick="selectProductToOrder('${p.id}')">اطلب الآن</button>
-            </div>
+
+  grid.innerHTML = "";
+  arr.forEach((p,i)=>{
+    // unique qty input id per product
+    const qtyInputId = `prod_qty_${p.id}`;
+    grid.innerHTML += `
+      <div class="col-md-4 col-sm-6">
+        <div class="card product-card p-2 shadow-sm">
+          <img src="${p.img}" class="product-img mb-2 rounded" alt="${p.name}">
+          <h5 class="text-dark">${p.name}</h5>
+          <p class="text-danger fw-bold">${p.price} ج.م</p>
+          <div class="d-flex gap-2 align-items-center mb-2">
+            <input id="${qtyInputId}" type="number" step="0.1" min="0.1" value="1" class="form-control" style="max-width:100px;">
+            <button class="btn btn-sm btn-success" onclick="addToCartFromCard('${p.id}')">أضف للسلة 🛒</button>
+            <button class="btn btn-sm btn-warning" onclick="openProduct(${i})">عرض 👁</button>
+            <button class="btn btn-sm btn-danger" onclick="orderNow(${i})">اطلب الآن ⚡</button>
           </div>
         </div>
       </div>
     `;
-    grid.appendChild(col);
   });
 
-  // also populate order select
-  const sel = $('#orderProduct');
-  if(sel){
-    sel.innerHTML = '<option value="">اختر منتج...</option>';
-    prods.forEach(p => { const o = document.createElement('option'); o.value = p.id; o.textContent = `${p.name} — ${p.price} ج.م`; sel.appendChild(o); });
+  // =======================
+  // ✅ ملء قائمة الطلب تلقائياً
+  // =======================
+  const select = $("#orderProduct");
+  if(select){
+    select.innerHTML = '<option value="">اختر منتج...</option>';
+    arr.forEach(p=>{
+      select.innerHTML += `<option value="${p.id}">${p.name} — ${p.price} ج.م</option>`;
+    });
   }
 }
 
-// --- Quick view (small modal-like) ---
-function quickView(id){
-  const p = fetchProducts().find(x=>x.id===id);
-  if(!p) return alert('المنتج غير متوفر');
-  const html = `
-    <div style="max-width:520px;margin:20px auto;padding:18px;border-radius:12px;background:#fff;text-align:right">
-      <h4 style="color:#B22222">${p.name}</h4>
-      <img src="${p.img}" style="width:100%;height:220px;object-fit:cover;border-radius:8px;margin-bottom:12px">
-      <p class="small text-muted">${p.desc||''}</p>
-      <p class="fw-bold">${p.price} ج.م</p>
-      <div style="display:flex;gap:8px;justify-content:flex-end">
-        <button class="btn btn-sm btn-secondary" onclick="closeQuick()">إغلاق</button>
-        <button class="btn btn-sm btn-warning" onclick="selectProductToOrder('${p.id}')">اطلب الآن</button>
-      </div>
-    </div>
-  `;
-  const wrapper = document.createElement('div');
-  wrapper.id = 'quickWrapper';
-  Object.assign(wrapper.style,{position:'fixed',inset:0,display:'flex',alignItems:'center',justifyContent:'center',zIndex:9999,background:'rgba(0,0,0,0.45)'});
-  wrapper.innerHTML = html;
-  document.body.appendChild(wrapper);
-}
-function closeQuick(){ const e = $('#quickWrapper'); e && e.remove(); }
+// =======================
+// ✅ Add to Cart from Product Card (reads qty input beside the card)
+// =======================
+function addToCartFromCard(productId){
+  const p = fetchProducts().find(x=> x.id == productId);
+  if(!p) return alert("المنتج غير موجود");
 
-// --- Select product to order (prefill select and scroll) ---
-function selectProductToOrder(id){
-  const sel = $('#orderProduct');
-  if(sel){ sel.value = id; }
-  const top = document.getElementById('order').offsetTop - 70;
-  window.scrollTo({top, behavior:'smooth'});
+  const qtyEl = document.getElementById(`prod_qty_${p.id}`);
+  let qty = qtyEl ? parseFloat(qtyEl.value) || 1 : 1;
+  if(qty <= 0) qty = 1;
+
+  const cart = fetchCart();
+  const exist = cart.find(x=> x.id == p.id);
+  if(exist) exist.qty = (parseFloat(exist.qty) || 0) + qty;
+  else cart.push({ id: p.id, name: p.name, price: p.price, qty });
+
+  saveCart(cart);
+  updateCartCount();
+  renderCartModal(); // تحديث المودال لو مفتوح
+  alert(`✅ تم إضافة ${qty} ${p.name} للسلة`);
 }
 
-// --- Location button ---
-$('#getLocationBtn') && $('#getLocationBtn').addEventListener('click', ()=>{
-  if(!navigator.geolocation) return alert('المتصفح لا يدعم تحديد الموقع');
-  $('#getLocationBtn').textContent = 'جاري تحديد الموقع...';
-  navigator.geolocation.getCurrentPosition(pos=>{
-    const lat = pos.coords.latitude.toFixed(6), lon = pos.coords.longitude.toFixed(6);
-    $('#orderAddress').value = `lat:${lat},lon:${lon}`;
-    $('#getLocationBtn').textContent = 'تم تحديد الموقع';
-  }, err=>{
-    console.warn(err);
-    alert('فشل تحديد الموقع. ادخل العنوان يدوياً');
-    $('#getLocationBtn').textContent = 'تحديد الموقع تلقائياً';
-  }, {timeout:10000, maximumAge:60000});
+// =======================
+// ✅ عند اختيار "اطلب الآن" من بطاقة المنتج
+// =======================
+function orderNow(i){
+  const product = fetchProducts()[i];
+  if(!product) return;
+  $("#orderProduct").value = product.id;
+  // حط القيمة في input الكميه داخل النموذج
+  const orderQty = $("#orderQty");
+  if(orderQty) orderQty.value = 1;
+  window.scrollTo({ top: $("#order").offsetTop - 60, behavior: "smooth" });
+}
+
+// =======================
+// ✅ زر "أضف للسلة" في نموذج الطلب (يدعم كيلو/قطع)
+// =======================
+$("#addToCartBtn")?.addEventListener("click", ()=>{
+  const selectedId = $("#orderProduct").value;
+  let qty = parseFloat($("#orderQty")?.value || 1) || 1; // يدعم الوحدات أو الكيلو
+  if(!selectedId) return alert("اختر المنتج أولاً");
+
+  const p = fetchProducts().find(x=>x.id == selectedId);
+  if(!p) return alert("المنتج غير موجود");
+
+  const cart = fetchCart();
+  const exist = cart.find(x=>x.id == selectedId);
+
+  if(exist) exist.qty = (parseFloat(exist.qty) || 0) + qty;
+  else cart.push({id:p.id, name:p.name, price:p.price, qty});
+
+  saveCart(cart);
+  updateCartCount();
+  renderCartModal();
+  alert(`✅ تم إضافة ${qty} ${p.name} للسلة`);
+  $("#orderQty").value = 1;
+  $("#orderProduct").value = "";
 });
 
-// --- Handle order submit ---
-$('#orderForm') && $('#orderForm').addEventListener('submit', function(e){
+// =======================
+// 🔴 Submit Order (يدعم الفاتورة العربية)
+// =======================
+$("#orderForm")?.addEventListener("submit", e=>{
   e.preventDefault();
-  const name = $('#custName').value.trim();
-  const phone = $('#custPhone').value.trim();
-  const prodId = $('#orderProduct').value;
-  const qty = parseInt($('#orderQty').value)||1;
-  const address = $('#orderAddress').value.trim() || 'غير محدد';
-  if(!name || !phone || !prodId) return alert('من فضلك املأ جميع الحقول المطلوبة');
 
-  const product = fetchProducts().find(p=>p.id===prodId);
-  if(!product) return alert('المنتج غير متاح الآن');
+  let cart = fetchCart();
+  const id = $("#orderProduct").value;
+  const qty = parseFloat($("#orderQty")?.value || 1) || 1;
 
-  const total = (product.price * qty);
-  const order = {
-    id: uid(),
-    name, phone, product: product.name, productId: prodId,
-    qty, price: product.price, total, address,
-    delivery: $('#orderDelivery').value, date: new Date().toLocaleString()
-  };
+  if(cart.length === 0 && id){
+    const p = fetchProducts().find(x => x.id == id);
+    if(p){ // التحقق أن المنتج موجود
+        cart.push({id:p.id, name:p.name, price:p.price, qty});
+        saveCart(cart);
+    }
+  }
+
+  cart = fetchCart();
+  if(cart.length === 0) return alert("السلة فارغة");
 
   const orders = fetchOrders();
+
+  // إعدادات التاريخ والوقت بالعربي لمصر
+  const dateOptions = {
+    year: 'numeric', month: 'long', day: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+    timeZone: 'Africa/Cairo',
+    hour12: true // استخدام نظام 12 ساعة (صباحاً/مساءً)
+  };
+  const arabicDate = new Date().toLocaleString('ar-EG', dateOptions);
+  
+  // (--- 🔴 تعديل رئيسي هنا 🔴 ---)
+  // تم تغيير المفاتيح إلى العربية
+  const order = {
+    "رقم_الطلب": orders.length + 1,
+    "العميل": $("#custName").value,
+    "الهاتف": $("#custPhone").value,
+    "العنوان": $("#orderAddress").value,
+    "المنتجات": cart, // مصفوفة المنتجات (تظل كما هي داخلياً)
+    "الإجمالي": cart.reduce((s,x)=> s + x.price*parseFloat(x.qty),0),
+    "التاريخ": arabicDate, // استخدام التاريخ العربي
+    "تم": false // إضافة حالة الطلب
+  };
+  // (--- نهاية التعديل ---)
+
   orders.unshift(order);
   saveOrders(orders);
 
-  // show printable invoice in new window
-  const invoiceHtml = generateInvoiceHtml(order);
-  const w = window.open('','_blank');
-  w.document.write(invoiceHtml);
-  w.document.close();
+  localStorage.removeItem('et_cart');
+  updateCartCount();
+  renderCartModal(); // تحديث المودال بعد إفراغ السلة
+  $("#orderForm").reset();
+  alert("✅ تم إرسال الطلب للأدمن!");
 
-  // reset form
-  this.reset();
-  alert('تم إرسال الطلب ✓ سيتم التواصل معك قريبًا');
+  // ⬇️⬇️ 🔴 (تعديل 1): استدعاء دالة إشعار تليجرام 🔴 ⬇️⬇️
+  sendTelegramNotification(order);
+  // ⬆️⬆️ (نهاية التعديل 1) ⬆️⬆️
+
+  // 🔴 إنشاء وعرض الفاتورة بالعربية بعد إرسال الطلب
+  // توليد HTML الفاتورة
+  try {
+    const invoiceHTML = `
+      <html lang="ar" dir="rtl">
+      <head>
+        <meta charset="UTF-8">
+        <title>فاتورة طلب</title>
+        <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700&display=swap" rel="stylesheet">
+        <style>
+          body { font-family: 'Cairo', sans-serif; direction: rtl; text-align: right; padding: 30px; }
+          h1, h2, h3 { text-align: center; }
+          table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+          th, td { border: 1px solid #ccc; padding: 8px; }
+          th { background: #f0f0f0; }
+          .total { font-weight: bold; text-align: left; }
+          .footer { text-align: center; margin-top: 40px; font-size: 14px; color: #666; }
+        </style>
+      </head>
+      <body>
+        <h1>فاتورة طلب</h1>
+        <h3>العميل: ${order["العميل"]}</h3>
+        <p>الهاتف: ${order["الهاتف"]}</p>
+        <p>العنوان: ${order["العنوان"] || "—"}</p>
+        <p>التاريخ: ${order["التاريخ"]}</p>
+
+        <table>
+          <tr>
+            <th>المنتج</th>
+            <th>السعر</th>
+            <th>الكمية</th>
+            <th>الإجمالي</th>
+          </tr>
+          ${order["المنتجات"].map(p => `
+            <tr>
+              <td>${p.name}</td>
+              <td>${p.price} ج.م</td>
+              <td>${p.qty}</td>
+              <td>${(p.price * p.qty).toFixed(2)} ج.م</td>
+            </tr>
+          `).join('')}
+          <tr>
+            <td colspan="3" class="total">الإجمالي الكلي</td>
+            <td class="total">${order["الإجمالي"].toFixed(2)} ج.م</td>
+          </tr>
+        </table>
+
+        <div class="footer">
+          <p>شكراً لتعاملكم مع <strong>الطيبات للحلاوة الطحينية</strong></p>
+          <p>يمكنك طباعة هذه الفاتورة للاحتفاظ بها</p>
+        </div>
+      </body>
+      </html>
+    `;
+
+    const w = window.open('', '_blank');
+    w.document.write(invoiceHTML);
+    w.document.close();
+  } catch (err){
+    console.error("خطأ أثناء إنشاء معاينة الفاتورة:", err);
+  }
 });
 
-// --- Invoice HTML generator ---
-function generateInvoiceHtml(order){
-  return `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>فاتورة طلب - ${order.id}</title>
-  <style>body{font-family:Tahoma;padding:20px}table{width:100%;border-collapse:collapse}td,th{padding:8px;border:1px solid #ddd;text-align:right}h2{color:#B22222}</style>
-  </head><body>
-  <h2>الطيبات - فاتورة طلب</h2>
-  <p>رقم الطلب: <strong>${order.id}</strong></p>
-  <p>العميل: <strong>${order.name}</strong> - ${order.phone}</p>
-  <p>العنوان: ${order.address}</p>
-  <table><thead><tr><th>المنتج</th><th>الكمية</th><th>سعر الوحدة</th><th>المجموع</th></tr></thead>
-  <tbody><tr><td>${order.product}</td><td>${order.qty}</td><td>${order.price} ج.م</td><td>${order.total.toFixed(2)} ج.م</td></tr></tbody>
-  </table>
-  <h3>الإجمالي: ${order.total.toFixed(2)} ج.م</h3>
-  <p>طريقة التوصيل: ${order.delivery}</p>
-  <p>التاريخ: ${order.date}</p>
-  <button onclick="window.print()" style="padding:10px 14px;background:#d62828;color:#fff;border:none;border-radius:8px;cursor:pointer"> طباعة  PDF</button>
-  <button onclick="window.save()" style="padding:10px 14px;background:#d62828;color:#fff;border:none;border-radius:8px;cursor:pointer"> حفظ PDF</button>
-  </body></html>`;
-}
-
-// --- Simple on-scroll reveal for animate-on-scroll elements ---
-function onScrollReveal(){
-  const els = document.querySelectorAll('.animate-on-scroll');
-  els.forEach(el=>{
-    const rect = el.getBoundingClientRect();
-    if(rect.top < (window.innerHeight - 80)) el.classList.add('visible');
+// =======================
+// ✅ Feedback
+// =======================
+$("#feedbackForm")?.addEventListener("submit", e=>{
+  e.preventDefault();
+  const arr = fetchFeedback();
+  arr.unshift({
+    name: $("#name").value,
+    type: $("#type").value,
+    msg: $("#message").value,
+    date: new Date().toLocaleString()
   });
-}
-window.addEventListener('scroll', onScrollReveal);
-window.addEventListener('load', ()=>{
-  // initial render
-  renderProducts();
+  saveFeedback(arr);
+  $("#feedbackForm").reset();
+  $("#formResponse").textContent = "✅ تم إرسال رسالتك";
+});
 
-  // trigger hero animation
-  document.querySelectorAll('.animate-fade-up').forEach((el,i)=> setTimeout(()=> el.classList.add('visible'), 120*i));
+// =======================
+// ✅ Cart Modal (renders details + total) - single source of truth
+// =======================
+function renderCartModal(){
+  const cart = fetchCart();
+  const box = $("#cartItems");
+  const totalLbl = $("#cartTotal");
 
-  // ensure selects filled
-  const sel = $('#orderProduct');
-  if(sel && sel.options.length<=1){
-    // in case fetchProducts populated after load
-    renderProducts();
+  if(!box) return;
+
+  if(cart.length === 0){
+    box.innerHTML = `<p class="text-center text-muted">السلة فارغة</p>`;
+    totalLbl.textContent = "الإجمالي: 0 ج.م";
+    return;
   }
+
+  let total = 0;
+  let html = "";
+  cart.forEach((c,i)=>{
+    const lineTotal = (parseFloat(c.price) || 0) * (parseFloat(c.qty) || 0);
+    total += lineTotal;
+    html += `
+      <div class="d-flex justify-content-between align-items-center p-2 border-bottom">
+        <div>
+          <strong>${c.name}</strong><br>
+          <small>${c.price} ج.م × ${c.qty}</small>
+        </div>
+        <div class="d-flex gap-2 align-items-center">
+          <span class="fw-bold">${lineTotal.toFixed(2)} ج.م</span>
+          <button class="btn btn-sm btn-danger" onclick="removeFromCart(${i})">حذف</button>
+        </div>
+      </div>
+    `;
+  });
+
+  box.innerHTML = html;
+  totalLbl.textContent = `الإجمالي: ${total.toFixed(2)} ج.م`;
+}
+
+// =======================
+// ✅ Remove from Cart
+// =======================
+function removeFromCart(i){
+  const cart = fetchCart();
+  cart.splice(i,1);
+  saveCart(cart);
+  updateCartCount();
+  renderCartModal();
+}
+
+// =======================
+// ✅ Cart Button
+// =======================
+$("#cartBtn")?.addEventListener("click", ()=>{
+  renderCartModal();
+  const modalEl = $("#cartModal");
+  const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+  modal.show();
+});
+
+// =======================
+// ✅ Checkout Button → يحول لنموذج الطلب
+// =======================
+$("#checkoutBtn")?.addEventListener("click", ()=>{
+  const modalEl = $("#cartModal");
+  const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+  modal.hide();
+
+  // نملأ الحقول بنقاط مهمة (لو في أول عنصر نقدر نعبي المنتج تلقائياً)
+  // فقط تمرير المستخدم للنموذج
+  setTimeout(()=> {
+    window.scrollTo({ top: $("#order").offsetTop - 60, behavior: "smooth" });
+  }, 200);
+});
+
+
+// =======================
+// ✅ Add to Cart (kept for compatibility) - expects index i -> convert to productId
+// =======================
+function addToCart(i){
+  // legacy function kept: accepts index
+  const arr = fetchProducts();
+  const p = arr[i];
+  if(!p) return alert("المنتج غير موجود");
+  // try to read card qty if present
+  const qtyEl = document.getElementById(`prod_qty_${p.id}`);
+  let qty = qtyEl ? parseFloat(qtyEl.value) || 1 : 1;
+  const cart = fetchCart();
+  const exist = cart.find(x=>x.id===p.id);
+  if(exist) exist.qty = (parseFloat(exist.qty) || 0) + qty;
+  else cart.push({...p, qty});
+  saveCart(cart);
+  updateCartCount();
+  alert("✅ تم إضافة المنتج للسلة");
+}
+
+// =======================
+// ✅ Open Product -> fills product detail modal and shows it
+// =======================
+function openProduct(i){
+  const p = fetchProducts()[i];
+  if(!p) return alert("المنتج غير موجود");
+  // fill modal
+  $("#pd_title").textContent = p.name;
+  $("#pd_img").src = p.img || '';
+  $("#pd_img").alt = p.name;
+  $("#pd_desc").textContent = p.desc || '';
+  $("#pd_price").textContent = (p.price ? p.price + ' ج.م' : '');
+  $("#pd_qty").value = 1;
+
+  // remove existing listeners to prevent duplicates
+  const newAdd = $("#pd_addBtn");
+  const newOrder = $("#pd_orderNowBtn");
+  // replace with fresh clones to remove old listeners
+  const newAddClone = newAdd.cloneNode(true);
+  newAdd.parentNode.replaceChild(newAddClone, newAdd);
+  const newOrderClone = newOrder.cloneNode(true);
+  newOrder.parentNode.replaceChild(newOrderClone, newOrder);
+
+  // add listeners
+  newAddClone.addEventListener('click', ()=>{
+    const qty = parseFloat($("#pd_qty").value) || 1;
+    const cart = fetchCart();
+    const exist = cart.find(x=> x.id == p.id);
+    if(exist) exist.qty = (parseFloat(exist.qty) || 0) + qty;
+    else cart.push({ id: p.id, name: p.name, price: p.price, qty });
+    saveCart(cart);
+    updateCartCount();
+    renderCartModal();
+    const modalEl = $("#productDetailModal");
+    bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+    alert(`✅ تم إضافة ${qty} ${p.name} للسلة`);
+  });
+
+  newOrderClone.addEventListener('click', ()=>{
+    // close modal and go to order form and preselect product
+    bootstrap.Modal.getOrCreateInstance($("#productDetailModal")).hide();
+    setTimeout(()=> {
+      $("#orderProduct").value = p.id;
+      $("#orderQty").value = 1;
+      window.scrollTo({ top: $("#order").offsetTop - 60, behavior: "smooth" });
+    }, 200);
+  });
+
+  // show modal
+  bootstrap.Modal.getOrCreateInstance($("#productDetailModal")).show();
+}
+
+// =======================
+// ✅ تحديد الموقع تلقائياً
+// =======================
+$("#getLocationBtn")?.addEventListener("click", ()=>{
+  if(!navigator.geolocation){
+    return alert("🚫 جهازك لا يدعم تحديد الموقع");
+  }
+  const btn = $("#getLocationBtn");
+  btn.textContent = "جاري تحديد الموقع...";
+  navigator.geolocation.getCurrentPosition(
+    pos=>{
+      const {latitude, longitude} = pos.coords;
+      // تم تعديل الرابط ليكون رابط خرائط جوجل قابل للضغط عليه
+      $("#orderAddress").value = `https://www.google.com/maps?q=${latitude},${longitude}`;
+      btn.textContent = "تم تحديد الموقع تلقائياً";
+    },
+    err=>{
+      console.error(err);
+      alert("🚫 فشل في الحصول على الموقع");
+      btn.textContent = "تحديد الموقع تلقائياً";
+    },
+    { timeout: 15000 }
+  );
+});
+
+
+// ⬇️⬇️ 🔴 (تعديل 2): إضافة دالة إشعار تليجرام 🔴 ⬇️⬇️
+// ===========================================
+// كود إرسال الإشعار - يوضع في نهاية script.js
+// ===========================================
+// ===========================================
+// 🔴 (تعديل) دالة إشعار تليجرام (نسخة التشخيص)
+// ===========================================
+async function sendTelegramNotification(orderData){
+  
+  // 🔴🔴 (مهم جداً) 🔴🔴
+  // تأكد 100% أن هذا الرابط هو "نفس" الرابط الذي نجح في المتصفح
+  const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbx_uGB3-fmEbv8B5Z6P34UJCx1vFKuu19lDVE0vL1K1s2OXMI-UuAjGV81nPAZWSOnD/exec"; 
+
+  // --- (1) طباعة البيانات قبل الإرسال ---
+  console.log("===== بدء إرسال إشعار تليجرام =====");
+  console.log("البيانات المراد إرسالها:", orderData);
+  
+  // التحقق من أن الرابط ليس فارغاً
+  if (WEB_APP_URL.includes("....")) {
+    console.error("⛔ خطأ: لم يتم تغيير رابط WEB_APP_URL في script.js!");
+    return; // إيقاف التنفيذ
+  }
+
+  // التحقق من أن البيانات ليست فارغة
+  if (!orderData) {
+     console.error("⛔ خطأ: بيانات الطلب (orderData) فارغة!");
+     return; // إيقاف التنفيذ
+  }
+  
+  try {
+    // --- (2) محاولة الإرسال ---
+    // (ملاحظة: حذفنا 'mode: no-cors' مؤقتاً لنرى الخطأ الحقيقي)
+    const response = await fetch(WEB_APP_URL, {
+      method: "POST",
+      body: JSON.stringify(orderData), 
+      headers: {
+        "Content-Type": "text/plain;charset=utf-8",
+      }
+    });
+
+    // --- (3) إذا نجح الإرسال ---
+    console.log("✅ نجح الإرسال (Fetch)!");
+    const result = await response.json(); // محاولة قراءة الرد من جوجل
+    console.log("الرد المستلم من جوجل:", result);
+
+  } catch (err) {
+    // --- (4) إذا فشل الإرسال (هذا هو ما نبحث عنه) ---
+    console.error("⛔⛔⛔ حدث خطأ فادح أثناء الإرسال ⛔⛔⛔");
+    console.error(err);
+    console.log("--- نصيحة: إذا كان الخطأ 'CORS policy' ---");
+    console.log("1. تأكد أن رابط موقعك يبدأ بـ 'https://' وليس 'http://'.");
+    console.log("2. إذا كان لا بد من 'http'، يجب إعادة النشر في جوجل مع تعديلات معقدة.");
+    console.log("3. تأكد أنك تستدعي الرابط الصحيح 100%.");
+  }
+}
+// ⬆️⬆️ (نهاية التعديل 2) ⬆️⬆️
+// ===========================================
+// 🔴 (البديل) دالة إشعار تليجرام باستخدام Webhook
+// ===========================================
+async function sendTelegramNotification(orderData){
+
+  // 🔴🔴 (مهم جداً) 🔴🔴
+  // الصق رابط "WEBHOOK" الذي نسخته من Make.com هنا
+  const MAKE_WEBHOOK_URL = "https://hook.eu2.make.com/mm2lg86htxgo9pzbkxnxs4uokrfx7gd4"; 
+
+  // التحقق من أن الرابط تم تغييره
+  if (MAKE_WEBHOOK_URL.includes("....")) {
+    console.error("⛔ خطأ: لم يتم تغيير رابط MAKE_WEBHOOK_URL في script.js!");
+    return; 
+  }
+
+  try {
+    // إرسال البيانات كـ JSON
+    const response = await fetch(MAKE_WEBHOOK_URL, {
+      method: "POST",
+      body: JSON.stringify(orderData), // إرسال بيانات الطلب كاملة
+      headers: {
+        "Content-Type": "application/json", // ⬅️ هام: النوع هنا JSON
+      }
+    });
+
+    // Make.com سيرد بـ "Accepted" إذا نجح
+    const result = await response.text();
+    console.log("✅ تم إرسال الطلب إلى Make.com بنجاح:", result);
+
+  } catch (err) {
+    // إذا فشل الإرسال (مثل عدم وجود إنترنت)
+    console.error("⛔ فشل إرسال الطلب إلى Make.com:", err);
+  }
+}
+
+// =======================
+// ✅ Init
+// =======================
+window.addEventListener("load", ()=>{
+  renderProducts();
+  updateCartCount();
+  // تم حذف استدعاءات دوال الأدمن من هنا
 });
